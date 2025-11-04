@@ -1,0 +1,6 @@
+@SharedCanvasWeb_HostAddress = http://localhost:5154
+
+GET {{SharedCanvasWeb_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

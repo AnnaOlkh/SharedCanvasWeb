@@ -1,0 +1,454 @@
+﻿<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Shared Drawing Pad</title>
+    <style>
+        :root {
+            --bg: #f4f6f8;
+            --panel: #ffffff;
+            --border-subtle: #cbd5e1;
+            --accent: #0284c7;
+            --text: #1e293b;
+            --text-muted: #475569;
+            --canvas-bg: #fffce7;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        .app {
+            width: 100%;
+            max-width: 900px;
+            padding: 24px 28px;
+            border-radius: 18px;
+            background: var(--panel);
+            border: 1px solid var(--border-subtle);
+            box-shadow: 0 6px 30px rgba(0, 0, 0, 0.05);
+        }
+
+        .app-header {
+            margin-bottom: 16px;
+        }
+
+        .title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
+            gap: 20px;
+        }
+
+        .canvas-wrap {
+            padding: 12px;
+            border-radius: 16px;
+            border: 1px solid var(--border-subtle);
+            background: #f9fafb;
+        }
+
+        #pad {
+            display: block;
+            border-radius: 12px;
+            background: var(--canvas-bg);
+            cursor: crosshair;
+            border: 1px solid #d1d5db;
+        }
+
+        .side {
+            padding: 14px 16px;
+            border-radius: 16px;
+            background: #f9fafb;
+            border: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .group-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .field-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        select,
+        input[type="text"] {
+            background: #ffffff;
+            border-radius: 8px;
+            border: 1px solid var(--border-subtle);
+            padding: 6px 10px;
+            font-size: 0.85rem;
+            color: var(--text);
+            outline: none;
+            transition: border-color 0.15s ease;
+        }
+
+            select:focus,
+            input[type="text"]:focus {
+                border-color: var(--accent);
+            }
+
+        button {
+            border-radius: 8px;
+            border: 1px solid var(--border-subtle);
+            padding: 6px 14px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            background: #ffffff;
+            color: var(--text);
+            transition: background 0.15s ease, border-color 0.15s ease;
+        }
+
+            button:hover {
+                border-color: var(--accent);
+                background: #f1f5f9;
+            }
+
+        #join {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: #e0f2fe;
+        }
+
+            #join:hover {
+                background: #bae6fd;
+            }
+
+        .ping-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border-subtle);
+            background: #ffffff;
+        }
+
+        .ping-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .ping-value {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+        }
+
+        @media (max-width: 860px) {
+            .layout {
+                grid-template-columns: minmax(0, 1fr);
+            }
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+</head>
+<body>
+    <div class="app">
+        <header class="app-header">
+            <div class="title">Shared Drawing Pad</div>
+        </header>
+
+        <main class="layout">
+            <section class="canvas-wrap">
+                <canvas id="pad" width="400" height="400"></canvas>
+            </section>
+
+            <aside class="side">
+                <div>
+                    <div class="group-label">Session</div>
+                    <div class="row" style="margin-top:6px;">
+                        <span class="field-label">Mode</span>
+                        <select id="mode">
+                            <option value="ws">WebSocket (SignalR)</option>
+                            <option value="poll">HTTP Poll</option>
+                            <option value="long">Long Poll</option>
+                            <option value="adaptive">Adaptive Poll</option>
+                        </select>
+                    </div>
+                    <div class="row" style="margin-top:8px;">
+                        <span class="field-label">Room</span>
+                        <input id="room" type="text" value="shared-canvas" size="14" />
+                    </div>
+                    <div class="row" style="margin-top:10px;">
+                        <button id="join">Join room</button>
+                        <button id="clear">Clear canvas</button>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="group-label">Network</div>
+                    <div class="ping-row">
+                        <label class="ping-toggle">
+                            <input type="checkbox" id="pingEnabled" />
+                            Enable ping
+                        </label>
+                        <span id="pingValue" class="ping-value">Ping: –</span>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("pad");
+        const ctx = canvas.getContext("2d");
+
+        const modeSelect = document.getElementById("mode");
+        const roomInput = document.getElementById("room");
+        const joinBtn = document.getElementById("join");
+        const clearBtn = document.getElementById("clear");
+        const pingEnabled = document.getElementById("pingEnabled");
+        const pingValue = document.getElementById("pingValue");
+
+        let room = roomInput.value;
+        let drawing = false;
+        let currentStroke = [];
+        let lastTicks = 0;
+
+        function drawStroke(stroke) {
+            const pts = stroke.points ?? stroke.Points;
+            if (!pts || pts.length < 2) return;
+
+            const color = stroke.color ?? stroke.Color ?? "blue";
+            const width = stroke.width ?? stroke.Width ?? 3;
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length; i++) {
+                ctx.lineTo(pts[i].x, pts[i].y);
+            }
+            ctx.stroke();
+        }
+
+        function addPoint(e) {
+            const rect = canvas.getBoundingClientRect();
+            currentStroke.push({
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top,
+            });
+        }
+
+        canvas.addEventListener("mousedown", (e) => {
+            drawing = true;
+            currentStroke = [];
+            addPoint(e);
+        });
+
+        canvas.addEventListener("mousemove", async (e) => {
+            if (!drawing) return;
+            addPoint(e);
+            const len = currentStroke.length;
+            if (len >= 2) {
+                const segment = { points: currentStroke.slice(len - 2) };
+                drawStroke(segment);
+
+                if (modeSelect.value === "ws") {
+                    const liveStroke = {
+                        room,
+                        color: "blue",
+                        width: 3,
+                        points: segment.points,
+                        createdAtTicks: 0,
+                    };
+                    connection.invoke("SendStroke", room, liveStroke);
+                }
+            }
+        });
+
+        window.addEventListener("mouseup", () => {
+            if (!drawing) return;
+            drawing = false;
+            if (currentStroke.length > 1) {
+                sendStroke(currentStroke);
+            }
+        });
+
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl("/hubs/drawing")
+            .withAutomaticReconnect()
+            .build();
+
+        connection.on("StrokeReceived", (stroke) => {
+            drawStroke(stroke);
+            const t = stroke.createdAtTicks ?? stroke.CreatedAtTicks ?? 0;
+            if (t > lastTicks) lastTicks = t;
+        });
+
+        connection.on("CanvasCleared", () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        });
+
+        connection.on("Pong", (clientTicks, serverTicks) => {
+            if (!pingEnabled.checked) return;
+            const now = Date.now();
+            const rtt = now - clientTicks;
+            pingValue.textContent = `Ping: ${rtt} ms`;
+        });
+
+        async function startSignalR() {
+            try {
+                await connection.start();
+                console.log("SignalR connected");
+            } catch (err) {
+                console.error(err);
+                setTimeout(startSignalR, 2000);
+            }
+        }
+        startSignalR();
+
+        joinBtn.onclick = async () => {
+            room = roomInput.value || "shared-canvas";
+            lastTicks = 0;
+            if (connection.state === signalR.HubConnectionState.Connected) {
+                await connection.invoke("JoinRoom", room);
+            }
+        };
+
+        clearBtn.onclick = async () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            await fetch(`/api/rooms/${encodeURIComponent(room)}/clear`, {
+                method: "POST",
+            });
+        };
+
+        async function sendStroke(points) {
+            const stroke = {
+                room,
+                color: "blue",
+                width: 3,
+                points,
+                createdAtTicks: 0,
+            };
+            const mode = modeSelect.value;
+            if (mode === "ws") {
+                await connection.invoke("SendStroke", room, stroke);
+            } else {
+                await fetch(`/api/rooms/${encodeURIComponent(room)}/strokes`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(stroke),
+                });
+            }
+        }
+
+        function drawManyAndUpdateTicks(strokes) {
+            strokes.forEach((s) => {
+                drawStroke(s);
+                const t = s.createdAtTicks ?? s.CreatedAtTicks ?? 0;
+                if (t > lastTicks) lastTicks = t;
+            });
+        }
+
+        async function pollLoop() {
+            while (true) {
+                if (modeSelect.value !== "poll") {
+                    await new Promise((r) => setTimeout(r, 500));
+                    continue;
+                }
+                const res = await fetch(
+                    `/api/rooms/${encodeURIComponent(
+                        room
+                    )}/updates?sinceTicks=${lastTicks}`
+                );
+                if (res.ok) {
+                    const data = await res.json();
+                    drawManyAndUpdateTicks(data);
+                }
+                await new Promise((r) => setTimeout(r, 1000));
+            }
+        }
+
+        async function longPollLoop() {
+            while (true) {
+                if (modeSelect.value !== "long") {
+                    await new Promise((r) => setTimeout(r, 500));
+                    continue;
+                }
+                const res = await fetch(
+                    `/api/rooms/${encodeURIComponent(
+                        room
+                    )}/updates-long?sinceTicks=${lastTicks}`
+                );
+                if (res.ok) {
+                    const data = await res.json();
+                    drawManyAndUpdateTicks(data);
+                }
+            }
+        }
+
+        async function adaptivePollLoop() {
+            let interval = 500;
+            while (true) {
+                if (modeSelect.value !== "adaptive") {
+                    await new Promise((r) => setTimeout(r, 500));
+                    continue;
+                }
+                const res = await fetch(
+                    `/api/rooms/${encodeURIComponent(
+                        room
+                    )}/updates?sinceTicks=${lastTicks}`
+                );
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.length > 0) {
+                        drawManyAndUpdateTicks(data);
+                        interval = 500;
+                    } else {
+                        interval = Math.min(interval * 2, 5000);
+                    }
+                }
+                await new Promise((r) => setTimeout(r, interval));
+            }
+        }
+        pollLoop();
+        longPollLoop();
+        adaptivePollLoop();
+
+        setInterval(() => {
+            if (!pingEnabled.checked) return;
+            if (connection.state !== signalR.HubConnectionState.Connected) return;
+            const now = Date.now();
+            connection.invoke("Ping", now);
+        }, 1000);
+    </script>
+</body>
+</html>
